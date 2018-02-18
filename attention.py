@@ -24,6 +24,9 @@ from keras import backend as K
 from keras.engine.topology import Layer, InputSpec
 from keras import initializers
 
+from config import *
+
+
 MAX_SENT_LENGTH = 100
 MAX_SENTS = 15
 MAX_NB_WORDS = 20000
@@ -40,7 +43,7 @@ def clean_str(string):
     string = re.sub(r"\"", "", string)
     return string.strip().lower()
 
-data_train = pd.read_csv('/home/abhi/keras/labeledTrainData.tsv', sep='\t')
+data_train = pd.read_csv(DATA_PATH, sep='\t')
 print(data_train.shape)
 
 from nltk import tokenize
@@ -95,11 +98,11 @@ y_val = labels[-nb_validation_samples:]
 print(type(y_train))
 print(type(x_train.shape))
 
-print('Number of positive and negative reviews in traing and validation set')
+print('Number of positive and negative numerical sarcastic tweets in traing and validation set')
 print(y_train.sum(axis=0))
 print(y_val.sum(axis=0))
 
-GLOVE_DIR = "/home/abhi/keras/glove.6B"
+GLOVE_DIR = GLOVE_DIR_PATH
 embeddings_index = {}
 f = open(os.path.join(GLOVE_DIR, 'glove.6B.100d.txt'))
 for line in f:
@@ -124,6 +127,33 @@ embedding_layer = Embedding(len(word_index) + 1,
                             weights=[embedding_matrix],
                             input_length=MAX_SENT_LENGTH,
                             trainable=True)
+
+class AttLayer(Layer):
+    def __init__(self, **kwargs):
+        self.init = initializers.get('normal')
+        #self.input_spec = [InputSpec(ndim=3)]
+        super(AttLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        assert len(input_shape)==3
+        #self.W = self.init((input_shape[-1],1))
+        self.W = self.init((input_shape[-1],))
+        #self.input_spec = [InputSpec(shape=input_shape)]
+        self.trainable_weights = [self.W]
+        super(AttLayer, self).build(input_shape)  # be sure you call this somewhere!
+
+    def call(self, x, mask=None):
+        eij = K.tanh(K.dot(x, self.W))
+
+        ai = K.exp(eij)
+        weights = ai/K.sum(ai, axis=1).dimshuffle(0,'x')
+
+        weighted_input = x*weights.dimshuffle(0,1,'x')
+        return weighted_input.sum(axis=1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[-1])
+
 
 class AttentionWeightedAverage(Layer):
     """
@@ -189,6 +219,7 @@ sentence_input = Input(shape=(MAX_SENT_LENGTH,), dtype='int32')
 embedded_sequences = embedding_layer(sentence_input)
 l_lstm = Bidirectional(LSTM(100, return_sequences=True))(embedded_sequences)
 l_dense = TimeDistributed(Dense(200))(l_lstm)
+# l_att = AttLayer()(l_dense)
 l_att = AttentionWeightedAverage()(l_dense)
 sentEncoder = Model(sentence_input, l_att)
 
@@ -196,6 +227,7 @@ review_input = Input(shape=(MAX_SENTS,MAX_SENT_LENGTH), dtype='int32')
 review_encoder = TimeDistributed(sentEncoder)(review_input)
 l_lstm_sent = Bidirectional(LSTM(100, return_sequences=True))(review_encoder)
 l_dense_sent = TimeDistributed(Dense(200))(l_lstm_sent)
+# l_att_sent = AttLayer()(l_dense_sent)
 l_att_sent = AttentionWeightedAverage()(l_dense_sent)
 preds = Dense(2, activation='softmax')(l_att_sent)
 model = Model(review_input, preds)
@@ -207,4 +239,4 @@ model.compile(loss='categorical_crossentropy',
 print("model fitting - Hierachical attention network")
 print(model.summary())
 model.fit(x_train, y_train, validation_data=(x_val, y_val),
-          epochs=5, batch_size=50)
+          epochs=2, batch_size=50)
