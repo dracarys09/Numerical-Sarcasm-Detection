@@ -20,4 +20,4 @@ https://nlp.stanford.edu/pubs/glove.pdf
 
 
 ## Dataset
-https://www.kaggle.com/c/word2vec-nlp-tutorial/data
+Check data folder

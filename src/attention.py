@@ -28,12 +28,6 @@ from keras import initializers
 from config import *
 
 
-MAX_SENT_LENGTH = 100
-MAX_SENTS = 15
-MAX_NB_WORDS = 20000
-EMBEDDING_DIM = 100
-VALIDATION_SPLIT = 0.2
-
 def clean_str(string):
     """
     Tokenization/string cleaning for dataset
@@ -129,32 +123,6 @@ embedding_layer = Embedding(len(word_index) + 1,
                             input_length=MAX_SENT_LENGTH,
                             trainable=True)
 
-class AttLayer(Layer):
-    def __init__(self, **kwargs):
-        self.init = initializers.get('normal')
-        #self.input_spec = [InputSpec(ndim=3)]
-        super(AttLayer, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        assert len(input_shape)==3
-        #self.W = self.init((input_shape[-1],1))
-        self.W = self.init((input_shape[-1],))
-        #self.input_spec = [InputSpec(shape=input_shape)]
-        self.trainable_weights = [self.W]
-        super(AttLayer, self).build(input_shape)  # be sure you call this somewhere!
-
-    def call(self, x, mask=None):
-        eij = K.tanh(K.dot(x, self.W))
-
-        ai = K.exp(eij)
-        weights = ai/K.sum(ai, axis=1).dimshuffle(0,'x')
-
-        weighted_input = x*weights.dimshuffle(0,1,'x')
-        return weighted_input.sum(axis=1)
-
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0], input_shape[-1])
-
 
 class AttentionWeightedAverage(Layer):
     """
@@ -220,7 +188,6 @@ sentence_input = Input(shape=(MAX_SENT_LENGTH,), dtype='int32')
 embedded_sequences = embedding_layer(sentence_input)
 l_lstm = Bidirectional(LSTM(100, return_sequences=True))(embedded_sequences)
 l_dense = TimeDistributed(Dense(200))(l_lstm)
-# l_att = AttLayer()(l_dense)
 l_att = AttentionWeightedAverage()(l_dense)
 sentEncoder = Model(sentence_input, l_att)
 
@@ -228,7 +195,6 @@ review_input = Input(shape=(MAX_SENTS,MAX_SENT_LENGTH), dtype='int32')
 review_encoder = TimeDistributed(sentEncoder)(review_input)
 l_lstm_sent = Bidirectional(LSTM(100, return_sequences=True))(review_encoder)
 l_dense_sent = TimeDistributed(Dense(200))(l_lstm_sent)
-# l_att_sent = AttLayer()(l_dense_sent)
 l_att_sent = AttentionWeightedAverage()(l_dense_sent)
 preds = Dense(2, activation='softmax')(l_att_sent)
 model = Model(review_input, preds)
@@ -240,4 +206,4 @@ model.compile(loss='categorical_crossentropy',
 print("model fitting - Hierachical attention network")
 print(model.summary())
 model.fit(x_train, y_train, validation_data=(x_val, y_val),
-          epochs=2, batch_size=50)
+          epochs=NUM_EPOCHS, batch_size=BATCH_SIZE)
