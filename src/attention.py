@@ -24,6 +24,7 @@ from keras import backend as K
 from keras.engine.topology import Layer, InputSpec
 from keras import initializers
 
+from keras.callbacks import ModelCheckpoint
 
 from config import *
 
@@ -79,24 +80,6 @@ labels = to_categorical(np.asarray(labels))
 print('Shape of data tensor:', data.shape)
 print('Shape of label tensor:', labels.shape)
 
-x_test_pos = data[0:1000]
-y_test_pos = labels[0:1000]
-data = data[1000:]
-labels = labels[1000:]
-x_test_neg = data[10024:14024]
-y_test_neg = labels[10024:14024]
-data1 = data[0:10024]
-data2 = data[14024:]
-data = np.concatenate((data1, data2), axis=0)
-labels1 = labels[0:10024]
-labels2 = labels[14024:]
-labels = np.concatenate((labels1, labels2), axis=0)
-x_test = np.concatenate((x_test_pos, x_test_neg), axis=0)
-y_test = np.concatenate((y_test_pos, y_test_neg), axis=0)
-
-print('Test Data Size')
-print(len(x_test))
-
 indices = np.arange(data.shape[0])
 np.random.shuffle(indices)
 data = data[indices]
@@ -115,9 +98,9 @@ print('Number of positive and negative numerical sarcastic tweets in traing and 
 print(y_train.sum(axis=0))
 print(y_val.sum(axis=0))
 
-GLOVE_DIR = GLOVE_DIR_PATH
+EMBEDDING_DIR = TWEET_EMBEDDINGS_PATH
 embeddings_index = {}
-f = open(os.path.join(GLOVE_DIR, 'glove.6B.100d.txt'))
+f = open(os.path.join(EMBEDDING_DIR, 'tweet_embeddings.100d.txt'))
 for line in f:
     values = line.split()
     word = values[0]
@@ -221,11 +204,11 @@ model.compile(loss='categorical_crossentropy',
               optimizer='rmsprop',
               metrics=['acc'])
 
+checkpoint = ModelCheckpoint(CHECKPOINT_FILE_PATH, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+callbacks_list = [checkpoint]
+
+
 print("model fitting - Hierachical attention network")
 print(model.summary())
 model.fit(x_train, y_train, validation_data=(x_val, y_val),
-          epochs=NUM_EPOCHS, batch_size=BATCH_SIZE)
-
-score, acc = model.evaluate(x_test, y_test, batch_size=BATCH_SIZE)
-print('--------------Test score:----=>', score)
-print('--------------Test accuracy:-----=>', acc)
+          epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, callbacks=callbacks_list)
